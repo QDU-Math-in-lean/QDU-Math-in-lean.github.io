@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown 文档浏览器</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.0.0/marked.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            background: #cfc7b9;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 16.666%;
+            background: #e8dcc4;
+            color: #5a6b5d;
+            overflow-y: auto;
+            border-right: 1px solid #d4c4a8;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .sidebar.collapsed {
+            width: 40px;
+        }
+
+        .sidebar.collapsed .sidebar-header h1,
+        .sidebar.collapsed .file-list {
+            display: none;
+        }
+
+        .toggle-btn {
+            position: absolute;
+            top: 15px;
+            right: -12px;
+            width: 24px;
+            height: 24px;
+            background: #a8c5b4;
+            border: none;
+            border-radius: 50%;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: all 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .toggle-btn:hover {
+            background: #91b5a0;
+            transform: scale(1.05);
+        }
+
+        .sidebar-header {
+            padding: 15px;
+            background: #dfd0b3;
+            border-bottom: 1px solid #c9b89a;
+        }
+
+        .sidebar-header h1 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #5a6b5d;
+        }
+
+        .file-list {
+            padding: 8px;
+        }
+
+        .file-item, .folder-item {
+            padding: 6px 10px;
+            margin: 3px 0;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            font-size: 13px;
+        }
+
+        .file-item:hover {
+            background: #dfd0b3;
+        }
+
+        .file-item.active {
+            background: #b8d4c6;
+            font-weight: 500;
+            color: #4a5b4d;
+        }
+
+        .folder-item {
+            font-weight: 500;
+            color: #7a8b7d;
+        }
+
+        .folder-item:hover {
+            background: #dfd0b3;
+        }
+
+        .folder-icon, .file-icon {
+            margin-right: 6px;
+            font-size: 12px;
+        }
+
+        .folder-icon::before {
+            content: '●';
+            color: #7a8b7d;
+        }
+
+        .folder-item.collapsed .folder-icon::before {
+            content: '○';
+        }
+
+        .file-icon::before {
+            content: '●';
+            color: #8ba8a1;
+        }
+
+        /* 折叠文件夹下的文件显示空心点 */
+        .folder-item.collapsed + .folder-children .file-icon::before {
+            content: '○';
+        }
+
+        .folder-children {
+            padding-left: 15px;
+        }
+
+        .folder-item.collapsed + .folder-children {
+            display: none;
+        }
+
+        .content {
+            width: 83.334%;
+            background: #fdfcfa;
+            overflow-y: auto;
+            padding: 50px 60px;
+            transition: all 0.3s ease;
+        }
+
+        .content.expanded {
+            width: calc(100% - 40px);
+        }
+
+        .error-message {
+            background: #fef3e4;
+            border: 1px solid #f4d9a6;
+            border-left: 4px solid #e8b563;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+
+        .error-message h3 {
+            color: #8b6914;
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+
+        .error-message p {
+            color: #8b6914;
+            margin-bottom: 10px;
+        }
+
+        .error-message ul {
+            color: #8b6914;
+            margin-left: 20px;
+        }
+
+        .error-message li {
+            margin-bottom: 5px;
+        }
+
+        .content h1 {
+            color: #4a5b4d;
+            border-bottom: 2px solid #b8d4c6;
+            padding-bottom: 12px;
+            margin-bottom: 25px;
+            font-size: 2em;
+        }
+
+        .content h2 {
+            color: #5a6b5d;
+            margin-top: 35px;
+            margin-bottom: 18px;
+            font-size: 1.6em;
+            scroll-margin-top: 20px;
+        }
+
+        .content h3 {
+            color: #6a7b6d;
+            margin-top: 25px;
+            margin-bottom: 12px;
+            font-size: 1.3em;
+            scroll-margin-top: 20px;
+        }
+
+        .content h4 {
+            color: #7a8b7d;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+            scroll-margin-top: 20px;
+        }
+
+        .content p {
+            line-height: 1.7;
+            margin-bottom: 16px;
+            color: #4a5543;
+        }
+
+        .content code {
+            background: #f0ebe0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #c17a6b;
+        }
+
+        .code-block-wrapper {
+            position: relative;
+            margin: 20px 0;
+        }
+
+        .content pre {
+            background: #e8e4d9;
+            color: #3a3a3a;
+            padding: 20px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 0;
+            position: relative;
+        }
+
+        .content pre code {
+            background: none;
+            padding: 0;
+            color: #3a3a3a;
+            display: block;
+            line-height: 1.5;
+        }
+
+        .copy-button {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            padding: 6px 12px;
+            background: rgba(168, 197, 180, 0.3);
+            color: #b8d4c6;
+            border: 1px solid rgba(168, 197, 180, 0.5);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            opacity: 0;
+            transition: all 0.3s;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        .code-block-wrapper:hover .copy-button {
+            opacity: 1;
+        }
+
+        .copy-button:hover {
+            background: rgba(60, 66, 151, 0.6);
+            color: #fff;
+        }
+
+        .copy-button:active {
+            background: rgba(168, 197, 180, 0.8);
+        }
+
+        .copy-button.copied {
+            background: rgba(168, 197, 180, 0.8);
+            color: #fff;
+        }
+
+        /* Lean代码注释样式 */
+        .comment {
+            color: #86c185 !important;
+        }
+
+        .content a {
+            color: #8ba8a1;
+            text-decoration: none;
+            border-bottom: 1px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .content a:hover {
+            border-bottom-color: #8ba8a1;
+        }
+
+        .content ul, .content ol {
+            margin-left: 30px;
+            margin-bottom: 16px;
+        }
+
+        .content li {
+            margin-bottom: 8px;
+            line-height: 1.7;
+            color: #4a5543;
+        }
+
+        .content blockquote {
+            border-left: 4px solid #b8d4c6;
+            padding-left: 20px;
+            margin: 20px 0;
+            color: #7a8b7d;
+            font-style: italic;
+        }
+
+        .wiki-link {
+            color: #a8869d;
+            text-decoration: none;
+            font-weight: 500;
+            border-bottom: 1px dashed #a8869d;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .wiki-link:hover {
+            color: #8b6d84;
+            border-bottom-style: solid;
+        }
+
+        .internal-link {
+            color: #8ba8a1;
+            text-decoration: none;
+            font-weight: 500;
+            border-bottom: 1px dashed #8ba8a1;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .internal-link:hover {
+            color: #6a8b7d;
+            border-bottom-style: solid;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f0ebe0;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c9bda5;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #b8a890;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar" id="sidebar">
+            <button class="toggle-btn" id="toggleBtn" onclick="toggleSidebar()">◀</button>
+            <div class="sidebar-header">
+                <h1>QDU math in lean</h1>
+            </div>
+            <div class="file-list" id="fileList"></div>
+        </div>
+        <div class="content" id="content">
+            <p>加载中...</p>
+        </div>
+    </div>
+
+    <script>
+        // 文件列表配置 - 只需要在这里添加文件路径即可
+        const fileList = [
+            'sources/hello.md',
+            'sources/lean/init lean4.md',
+            'sources/lean/如何写lean.md',
+            'sources/lean/如何查找定理.md',
+            'sources/初等数论形式化/初等数论.md',
+            'sources/环境以及配置问题/Lean 4 工具链使用指南.md',
+            'sources/环境以及配置问题/elan 常用指令.md',
+            'sources/环境以及配置问题/lake 常用指令.md',
+            'sources/环境以及配置问题/mathlib init.md',
+            'sources/环境以及配置问题/处理不同文件中重复下载mathlib库的问题.md',
+            'sources/环境以及配置问题/数列表示.md',
+            'sources/策略/策略汇总.md',
+        ];
+
+        // 自动构建文件结构
+        function buildFileStructure(files) {
+            const structure = {};
+            
+            files.forEach(filePath => {
+                const parts = filePath.split('/');
+                let current = structure;
+                
+                for (let i = 0; i < parts.length; i++) {
+                    const part = parts[i];
+                    
+                    if (i === parts.length - 1) {
+                        // 文件
+                        current[part] = filePath;
+                    } else {
+                        // 文件夹
+                        if (!current[part]) {
+                            current[part] = {};
+                        }
+                        current = current[part];
+                    }
+                }
+            });
+            
+            return structure;
+        }
+
+        const fileStructure = buildFileStructure(fileList);
+        let currentFile = 'sources/hello.md';
+
+        // 构建文件列表
+        function buildFileList(structure, container, level = 0) {
+            // 分离文件和文件夹
+            const files = [];
+            const folders = [];
+            
+            for (const [name, value] of Object.entries(structure)) {
+                if (typeof value === 'string') {
+                    files.push({ name, value });
+                } else {
+                    folders.push({ name, value });
+                }
+            }
+            
+            // 先添加所有文件（未归类的md显示在顶部）
+            files.forEach(({ name, value }) => {
+                const displayName = name.replace(/\.md$/, '');
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `<span class="file-icon"></span>${displayName}`;
+                fileItem.dataset.path = value;
+                fileItem.onclick = () => loadMarkdown(value);
+                container.appendChild(fileItem);
+            });
+            
+            // 再添加所有文件夹
+            folders.forEach(({ name, value }) => {
+                const folderItem = document.createElement('div');
+                folderItem.className = 'folder-item collapsed';
+                folderItem.innerHTML = `<span class="folder-icon"></span>${name}`;
+                
+                const folderChildren = document.createElement('div');
+                folderChildren.className = 'folder-children';
+                
+                folderItem.onclick = (e) => {
+                    e.stopPropagation();
+                    folderItem.classList.toggle('collapsed');
+                };
+                
+                container.appendChild(folderItem);
+                container.appendChild(folderChildren);
+                buildFileList(value, folderChildren, level + 1);
+            });
+        }
+
+        // 切换侧边栏
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const content = document.getElementById('content');
+            const toggleBtn = document.getElementById('toggleBtn');
+            
+            sidebar.classList.toggle('collapsed');
+            content.classList.toggle('expanded');
+            
+            // 切换按钮文字
+            if (sidebar.classList.contains('collapsed')) {
+                toggleBtn.textContent = '▶';
+            } else {
+                toggleBtn.textContent = '◀';
+            }
+        }
+
+        // 加载Markdown文件
+        async function loadMarkdown(filePath) {
+            try {
+                const response = await fetch(filePath);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                let markdown = await response.text();
+                
+                // 处理 [[#xxx]] 语法（页面内跳转）
+                markdown = markdown.replace(/\[\[#([^\]]+)\]\]/g, (match, linkText) => {
+                    return `<a href="#" class="internal-link" data-target="#${linkText}">${linkText}</a>`;
+                });
+                
+                // 处理 [[xxx]] 语法（文件跳转）
+                markdown = markdown.replace(/\[\[([^\]]+)\]\]/g, (match, linkText) => {
+                    return `<a href="#" class="wiki-link" data-target="${linkText}">${linkText}</a>`;
+                });
+                
+                const html = marked.parse(markdown);
+                document.getElementById('content').innerHTML = html;
+                
+                // 为代码块添加复制按钮和注释高亮
+                processCodeBlocks();
+                
+                // 为所有标题添加ID
+                addHeaderIds();
+                
+                // 更新当前文件状态
+                currentFile = filePath;
+                updateActiveFile(filePath);
+                
+                // 绑定wiki链接点击事件
+                bindWikiLinks();
+                bindInternalLinks();
+                
+            } catch (error) {
+                showError(filePath, error);
+            }
+        }
+
+        // 为标题添加ID
+        function addHeaderIds() {
+            const headers = document.querySelectorAll('.content h1, .content h2, .content h3, .content h4, .content h5, .content h6');
+            headers.forEach(header => {
+                const text = header.textContent.trim();
+                const id = text.replace(/\s+/g, '-').replace(/[^\w\u4e00-\u9fa5-]/g, '');
+                header.id = id;
+            });
+        }
+
+        // 处理代码块：添加复制按钮和高亮注释
+        function processCodeBlocks() {
+            const preBlocks = document.querySelectorAll('.content pre');
+            preBlocks.forEach(pre => {
+                // 包装代码块
+                const wrapper = document.createElement('div');
+                wrapper.className = 'code-block-wrapper';
+                pre.parentNode.insertBefore(wrapper, pre);
+                wrapper.appendChild(pre);
+                
+                // 添加复制按钮
+                const copyBtn = document.createElement('button');
+                copyBtn.className = 'copy-button';
+                copyBtn.textContent = '复制';
+                copyBtn.onclick = () => copyCodeToClipboard(pre, copyBtn);
+                wrapper.appendChild(copyBtn);
+                
+                // 高亮注释
+                const codeElement = pre.querySelector('code');
+                if (codeElement) {
+                    highlightComments(codeElement);
+                }
+            });
+        }
+
+        // 高亮代码中的注释
+        function highlightComments(codeElement) {
+            let html = codeElement.innerHTML;
+            
+            // 处理 -- 注释（Lean风格）
+            html = html.replace(/--([^\n]*)/g, '<span class="comment">--$1</span>');
+            
+            // // 处理 # 注释（Python/Shell风格）
+            // html = html.replace(/#([^\n]*)/g, '<span class="comment">#$1</span>');
+            
+            codeElement.innerHTML = html;
+        }
+
+        // 复制代码到剪贴板
+        async function copyCodeToClipboard(pre, button) {
+            const code = pre.querySelector('code');
+            const text = code.textContent;
+            
+            try {
+                await navigator.clipboard.writeText(text);
+                button.textContent = '已复制!';
+                button.classList.add('copied');
+                
+                setTimeout(() => {
+                    button.textContent = '复制';
+                    button.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                console.error('复制失败:', err);
+                button.textContent = '复制失败';
+                setTimeout(() => {
+                    button.textContent = '复制';
+                }, 2000);
+            }
+        }
+
+        // 显示错误信息
+        function showError(filePath, error) {
+            const errorHtml = `
+                <div class="error-message">
+                    <h3>⚠️ 文件加载失败</h3>
+                    <p><strong>文件路径:</strong> ${filePath}</p>
+                    <p><strong>错误信息:</strong> ${error.message}</p>
+                    <p><strong>可能的原因:</strong></p>
+                    <ul>
+                        <li>文件不存在或路径不正确</li>
+                        <li>需要通过HTTP服务器访问（不能直接打开HTML文件）</li>
+                        <li>浏览器的CORS安全策略限制</li>
+                    </ul>
+                    <p><strong>解决方案:</strong></p>
+                    <ul>
+                        <li>确保文件路径正确：<code>${filePath}</code></li>
+                        <li>使用本地服务器运行，例如：
+                            <br><code>python -m http.server 8000</code>
+                            <br>或 <code>python3 -m http.server 8000</code>
+                            <br>然后访问 <code>http://localhost:8000/project.html</code>
+                        </li>
+                        <li>或使用VS Code的Live Server插件</li>
+                    </ul>
+                </div>
+            `;
+            document.getElementById('content').innerHTML = errorHtml;
+        }
+
+        // 更新激活的文件项
+        function updateActiveFile(filePath) {
+            document.querySelectorAll('.file-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.path === filePath) {
+                    item.classList.add('active');
+                }
+            });
+        }
+
+        // 绑定wiki链接
+        function bindWikiLinks() {
+            document.querySelectorAll('.wiki-link').forEach(link => {
+                link.onclick = (e) => {
+                    e.preventDefault();
+                    const target = e.target.dataset.target;
+                    
+                    // 查找目标文件
+                    let targetPath = findFileByName(target);
+                    if (targetPath) {
+                        loadMarkdown(targetPath);
+                    } else {
+                        alert(`找不到文件: ${target}`);
+                    }
+                };
+            });
+        }
+
+        // 绑定内部链接（页面内跳转）
+        function bindInternalLinks() {
+            document.querySelectorAll('.internal-link').forEach(link => {
+                link.onclick = (e) => {
+                    e.preventDefault();
+                    const target = e.target.dataset.target;
+                    
+                    // 移除开头的#并转换为ID格式
+                    const targetId = target.replace(/^#/, '').replace(/\s+/g, '-').replace(/[^\w\u4e00-\u9fa5-]/g, '');
+                    const targetElement = document.getElementById(targetId);
+                    
+                    if (targetElement) {
+                        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    } else {
+                        console.warn(`找不到目标元素: ${targetId}`);
+                    }
+                };
+            });
+        }
+
+        // 根据名称查找文件路径
+        function findFileByName(name) {
+            // 尝试精确匹配
+            const exactMatch = findFileRecursive(fileStructure, name);
+            if (exactMatch) return exactMatch;
+            
+            // 尝试添加.md后缀
+            const withExtension = findFileRecursive(fileStructure, name + '.md');
+            if (withExtension) return withExtension;
+            
+            return null;
+        }
+
+        function findFileRecursive(structure, targetName) {
+            for (const [name, value] of Object.entries(structure)) {
+                if (typeof value === 'string') {
+                    if (name === targetName || name.replace('.md', '') === targetName) {
+                        return value;
+                    }
+                } else {
+                    const found = findFileRecursive(value, targetName);
+                    if (found) return found;
+                }
+            }
+            return null;
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            const fileList = document.getElementById('fileList');
+            buildFileList(fileStructure.sources, fileList);
+            loadMarkdown('sources/hello.md');
+        });
+    </script>
+</body>
+</html>
